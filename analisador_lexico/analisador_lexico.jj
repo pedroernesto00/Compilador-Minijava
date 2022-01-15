@@ -1,0 +1,402 @@
+options {
+  JAVA_UNICODE_ESCAPE = true;
+}
+
+PARSER_BEGIN(MiniJavaParser)
+    import analisador_semantico.syntaxtree.*;
+
+    public class MiniJavaParser {
+        public static void main(String[] args) {
+            try {
+                java.io.FileInputStream file = new java.io.FileInputStream(new java.io.File(args[0]));
+                MiniJavaParser MyParser = new MiniJavaParser(file);
+                MyParser.Goal();
+                System.out.println("O programa está correto lexicamente e sintaticamente!");
+            }
+            catch (Exception e) {
+                System.out.println("Programa com erro léxico ou sintático!\n" + e.toString());
+            }
+      }
+}
+PARSER_END(MiniJavaParser)
+
+SKIP : {
+    " " | "\n" | "\r" | "\t"
+    | "/*" : MULTILINE_COMMENT
+    | < "/" "/" (~["\r", "\n"])* >
+}
+
+<MULTILINE_COMMENT> SKIP: {
+     "*/"  : DEFAULT
+    | < ~[] >
+}
+
+//Palavras Reservadas
+TOKEN : {
+    < IF : "if" >
+    | < ELSE : "else" >
+    | < WHILE : "while" >
+    | < PRINT : "System.out.println" >
+    | < LENGTH : "length" >
+    | < TRUE : "true" >
+    | < FALSE : "false">
+    | < THIS : "this" >
+    | < NEW : "new" >
+}
+
+//Tipos
+TOKEN : {
+    < CLASS : "class" >
+    | < PUBLIC : "public" >
+    | < STATIC : "static" >
+    | < VOID : "void" >
+    | < MAIN : "main" >
+    | < STRING : "String" >
+    | < EXTENDS : "extends" >
+    | < RETURN : "return" >
+    | < INT : "int" >
+    | < BOOLEAN : "boolean" >
+}
+
+//Operadores
+TOKEN: {
+    < AND : "&&" >
+    | < PLUS : "+" >
+    | < MINUS : "-" >
+    | < TIMES : "*" >
+    | <ASSIGN : "=" >
+    | < NOT : "!" >
+}
+
+//Pontuações
+TOKEN : {
+    < LEFT_BRACE : "{" >
+    | < RIGHT_BRACE : "}" >
+    | < LEFT_PARENTHESES : "(" >
+    | < RIGHT_PARENTHESES : ")" >
+    | < LEFT_BRACKET : "[" >
+    | < RIGHT_BRACKET : "]" >
+    | < SEMI : ";" >
+    | < DOT : "." >
+    | < COMMA : "," >
+}
+
+//Literais
+TOKEN: {
+    < IDENTIFIER : (["a"-"z"] | ["A"-"Z"]) (["a"-"z"] | ["A"-"Z"] | <INTEGER_LITERAL> | "_")* >
+    | < INTEGER_LITERAL : (["0"-"9"])+ >
+}
+
+Program Goal(): {
+    MainClass main;
+    ClassDecl class_decl;
+    ClassDeclList class_list = new ClassDeclList();
+} {
+    main = MainClass()
+    (class_decl = ClassDecl() {class_list.addElement(class_decl);})*
+    <EOF>
+    {return new Program (main, class_list);}
+}
+
+//Analisador Léxico
+MainClass MainClass(): {
+    Identifier id1;
+    Identifier id2;
+    Statement statement;
+} {
+        <CLASS>
+        id1 = Identifier()
+        "{" <PUBLIC> <STATIC> <VOID> <MAIN> "(" <STRING> "[" "]"
+        id2 = Identifier()
+        ")" "{"
+        statement = Statement()
+        "}" "}"
+        {return new MainClass(id1, id2, statement);}
+    }
+
+
+ClassDecl ClassDecl(): {
+    Identifier id1;
+    Identifier id2;
+    VarDeclList var_list = new VarDeclList();
+    VarDecl var;
+    MethodDecl method;
+    MethodDeclList method_list = new MethodDeclList();
+} {
+    LOOKAHEAD(3)
+    <CLASS>
+    id1 = Identifier()
+    "{"
+    (var = VarDecl() {var_list.addElement(var);})*
+    (method = MethodDecl() {method_list.addElement(method);})*
+    "}"
+    { return new ClassDeclSimple(id1, var_list, method_list);}
+
+    |   <CLASS>
+        id1 = Identifier()
+        <EXTENDS>
+        id2 = Identifier()
+        "{"
+        (var = VarDecl() {var_list.addElement(var);})*
+        (method = MethodDecl() {method_list.addElement(method);})*
+        "}"
+        { return new ClassDeclExtends(id1, id2, var_list, method_list); }
+
+}
+
+VarDecl VarDecl(): {
+    Type type;
+    Identifier id1;
+} {
+    type = Type() 
+    id1 = Identifier() 
+    ";"
+    {return new VarDecl(type, id1);}
+}
+
+MethodDecl MethodDecl(): {
+    Type type;
+    Identifier id1;
+    FormalList formal_list = new FormalList();
+    VarDecl var;
+    VarDeclList var_list = new VarDeclList();
+    Statement statement;
+    StatementList statement_list = new StatementList();
+    Exp exp;
+    ExpList exp_list = new ExpList();
+}{
+    "public" 
+    type = Type() 
+    id1 = Identifier() 
+    "(" 
+    formal_list = FormalList()
+    ")" "{"
+    (LOOKAHEAD(2) 
+    var = VarDecl() {var_list.addElement(var);})* 
+    (statement = Statement() {statement_list.addElement(statement);})* 
+    "return" 
+    exp = Expression() 
+    ";" "}"
+	{ return new MethodDecl(type, id1, formal_list, var_list, statement_list, exp); }
+}
+
+Formal Formal():{
+    Type type;
+    Identifier id;
+}
+{
+  type = Type() 
+  id = Identifier()
+  {return new Formal(type, id);}
+}
+
+FormalList FormalList() :
+{
+    FormalList list = new FormalList();
+    Formal formal;
+    Formal formal2;
+}
+{
+  (formal = Formal(){ list.addElement(formal); }) 
+  (formal2 = FormalRest() {list.addElement(formal2);})*
+  {return list;}
+  | {return list;}
+}
+
+Formal FormalRest(): {
+// {"," Type() Identifier()}
+    Type type;
+    Identifier id;
+}
+{ 
+    ","
+    type = Type() 
+    id = Identifier()
+    {return new Formal(type, id);}
+}
+
+Type Type(): {} {
+    LOOKAHEAD(2)
+    "int" "[" "]" {return new IntArrayType();}
+    | "int" {return new IntegerType();}
+    | Identifier() {return new IdentifierType(token.image);}
+    | "boolean" {return new BooleanType();}
+}
+
+
+Statement Statement(): {
+    Statement statement;
+    Statement statement2;
+    Identifier id;
+    StatementList statement_list = new StatementList();
+    Exp exp;
+    Exp exp2;
+}{
+    "{" 
+    (statement = Statement(){statement_list.addElement(statement);})* 
+    "}"
+    {return new Block(statement_list);}
+    
+    |   "if" "(" 
+        exp = Expression() 
+        ")" 
+        statement = Statement() 
+        "else" 
+        statement2 = Statement()
+        {return new If(exp, statement, statement2);}
+    
+    |   "while" "("  
+        exp = Expression() 
+        ")" 
+        statement = Statement()
+        {return new While(exp, statement);}
+    
+    |   "System.out.println" "("  
+        exp = Expression() 
+        ")" ";"
+        {return new Print(exp);}
+    
+    |   LOOKAHEAD(2) 
+        id = Identifier() 
+        "=" 
+        exp = Expression() 
+        ";"
+        {return new Assign(id, exp);}
+    
+    |   id = Identifier() 
+        "["
+        exp = Expression() 
+        "]" "=" 
+        exp2 = Expression() 
+        ";"
+        {return new ArrayAssign(id, exp, exp2);}
+}
+
+Exp Expression(): {
+    Exp expression;
+    Identifier id;
+    IdentifierExp idexp;
+    NewObject newobject;
+    NewArray newarray;
+    This th;
+    True t;
+    False f;
+    Not not;
+    IntegerLiteral integerliteral;
+} { 
+    
+    LOOKAHEAD(2)
+    "new" "int" "[" expression = Expression() "]"
+    { newarray = new NewArray(expression);}
+    {return ExpressionRecursion(newarray);}
+    
+    | "new" id = Identifier() "(" ")"
+    { newobject = new NewObject(id);}
+    {return ExpressionRecursion(newobject);}
+    
+    | Identifier()
+    {idexp = new IdentifierExp(token.image); }
+    {return ExpressionRecursion(idexp);}
+
+    |"true"
+    {t = new True();}
+    {return ExpressionRecursion(t);}
+
+    |"false"
+    {f = new False();}
+    {return ExpressionRecursion(f);}
+
+    |"this"
+    {th = new This();}
+    {return ExpressionRecursion(th);}
+
+    |  <INTEGER_LITERAL>
+    {integerliteral = new IntegerLiteral(Integer.parseInt(token.image));}
+    {return ExpressionRecursion(integerliteral);}
+
+    | "!" 
+    expression = Expression()
+    {not = new Not(expression); }
+    {return ExpressionRecursion(not);}
+
+    | "(" 
+    expression = Expression()
+     ")"
+     {return ExpressionRecursion(expression);}
+}
+
+Exp ExpressionRecursion(Exp exp): {
+    Identifier id;
+    ExpList explist;
+    Exp expression;
+    And and;
+    LessThan less;
+    Plus plus;
+    Minus minus;
+    Times times;
+    ArrayLookup arraylookup;
+    ArrayLength arraylength;
+    Call call;
+
+} {
+    "&&" expression = Expression()
+    {and = new And(exp,expression);}
+    {return ExpressionRecursion(and);}
+
+    | "<" expression = Expression()
+    {less = new LessThan(exp,expression);}
+    {return ExpressionRecursion(less);}
+
+    | "+" expression = Expression()
+    {plus = new Plus(exp,expression);}
+    {return ExpressionRecursion(plus);}
+
+    | "-" expression = Expression()
+    {minus = new Minus(exp,expression);}
+    {return ExpressionRecursion(minus);}
+
+    | "*" expression = Expression()
+    {times = new Times(exp,expression);}
+    {return ExpressionRecursion(times);}
+
+    |LOOKAHEAD(2)
+    "." id = Identifier() 
+    "(" {explist = ExpList();} ")"
+    {call = new Call(exp,id,explist);}
+    {return ExpressionRecursion(call);}
+
+    | "." "length" 
+    {arraylength = new ArrayLength(exp);}
+    {return ExpressionRecursion(arraylength);}
+
+    | "[" expression = Expression() "]" 
+    {arraylookup = new ArrayLookup(exp,expression);}
+    {return ExpressionRecursion(arraylookup);}
+    
+    | {return exp;} 
+}
+
+ExpList ExpList():{
+    Exp expression1,expression2;
+    ExpList expList = new ExpList();
+}{
+    (expression1 = Expression() {expList.addElement(expression1);})
+    (expression2 = ExpRest() {expList.addElement(expression2); })*
+    {return expList;}
+    |{return expList;}
+}
+
+
+Exp ExpRest():{
+    Exp exp;
+}
+{
+    ","
+    exp = Expression()
+    {return exp;}    
+}
+
+Identifier Identifier(): {}{
+    <IDENTIFIER> 
+    { return new Identifier(token.image); }
+}
